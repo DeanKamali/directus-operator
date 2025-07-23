@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- directus_v1_directus.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

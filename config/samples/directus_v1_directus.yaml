@@ -1,0 +1,142 @@
+apiVersion: directus.example.com/v1
+kind: Directus
+metadata:
+  labels:
+    app.kubernetes.io/name: directus-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: directus-sample
+  namespace: default
+spec:
+  # Number of Directus replicas
+  replicaCount: 2
+
+  # Container image configuration
+  image:
+    repository: directus/directus
+    tag: "11.8.0"
+    pullPolicy: IfNotPresent
+
+  # Admin configuration
+  adminEmail: "admin@example.com"
+
+  # Service account configuration
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/directus-role"
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+
+  # Ingress configuration (optional)
+  ingress:
+    enabled: true
+    enableTLS: true
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: directus.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: directus-tls
+        hosts:
+          - directus.example.com
+
+  # Database configuration
+  database:
+    engine: mysql
+    host: mysql-service
+    port: 3306
+    database: directus_db
+    username: directus_user
+    existingSecret: mysql-credentials
+
+  # Redis configuration
+  redis:
+    enabled: true
+    host: redis-service
+    port: 6379
+
+  # Autoscaling configuration (optional)
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Probes
+  enableLivenessProbe: true
+  enableReadinessProbe: true
+  enableStartupProbe: true
+
+  # Resource requirements
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+  # Pod annotations
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8055"
+
+  # Security contexts
+  podSecurityContext:
+    fsGroup: 2000
+
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+
+  # Node selection and scheduling
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  tolerations:
+    - key: "node.kubernetes.io/not-ready"
+      operator: "Exists"
+      effect: "NoExecute"
+      tolerationSeconds: 300
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - directus
+            topologyKey: kubernetes.io/hostname
+
+  # Additional environment variables
+  extraEnvVars:
+    - name: PUBLIC_URL
+      value: "https://directus.example.com"
+    - name: LOG_LEVEL
+      value: "info"
+
+  # Create application secrets (for ADMIN_PASSWORD, KEY, SECRET)
+  createApplicationSecret: true
+  applicationSecretName: directus-app-secrets
+
+  # Attach existing secrets
+  attachExistingSecrets:
+    - database-credentials
+    - redis-credentials

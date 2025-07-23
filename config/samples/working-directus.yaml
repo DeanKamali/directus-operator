@@ -1,0 +1,59 @@
+apiVersion: directus.example.com/v1
+kind: Directus
+metadata:
+  name: working-directus
+  namespace: default
+spec:
+  # Working configuration for Directus
+  replicaCount: 1
+  
+  image:
+    repository: directus/directus
+    tag: "latest"
+  
+  adminEmail: "admin@test.com"
+  
+  # Create service account
+  serviceAccount:
+    create: true
+  
+  service:
+    type: ClusterIP
+    port: 80
+  
+  # Use SQLite for simple testing
+  database:
+    engine: sqlite
+  
+  # Disable Redis for simplicity
+  redis:
+    enabled: false
+  
+  # Enable basic probes with longer delays for startup
+  enableLivenessProbe: true
+  enableReadinessProbe: true
+  
+  # Create application secrets
+  createApplicationSecret: true
+  
+  # Additional environment variables needed for Directus
+  extraEnvVars:
+    - name: DB_FILENAME
+      value: "/tmp/database.sqlite"
+    - name: DB_CLIENT
+      value: "sqlite3"
+    - name: CACHE_ENABLED
+      value: "false"
+    - name: RATE_LIMITER_ENABLED
+      value: "false"
+    - name: PUBLIC_URL
+      value: "http://localhost:8055"
+  
+  # Basic resource limits  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi 
