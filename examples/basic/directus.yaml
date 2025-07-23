@@ -1,0 +1,81 @@
+apiVersion: directus.example.com/v1
+kind: Directus
+metadata:
+  name: basic-directus
+  namespace: default
+spec:
+  # Single replica for testing
+  replicaCount: 1
+  
+  # Use latest stable Directus image
+  image:
+    repository: directus/directus
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  # Admin configuration
+  adminEmail: "admin@example.com"
+  
+  # Create service account
+  serviceAccount:
+    create: true
+    annotations:
+      example.com/description: "Service account for basic Directus deployment"
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+  
+  # Use SQLite for simple testing (no external database required)
+  database:
+    engine: sqlite
+  
+  # Disable Redis for simplicity
+  redis:
+    enabled: false
+  
+  # Enable health checks
+  enableLivenessProbe: true
+  enableReadinessProbe: true
+  enableStartupProbe: true
+  
+  # Create application secrets automatically
+  createApplicationSecret: true
+  applicationSecretName: basic-directus-secrets
+  
+  # Basic resource limits suitable for testing
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Basic environment variables for development
+  extraEnvVars:
+    - name: LOG_LEVEL
+      value: "info"
+    - name: PUBLIC_URL
+      value: "http://localhost:8080"
+    - name: ADMIN_EMAIL
+      value: "admin@example.com"
+  
+  # Security context
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+  
+  # Pod security context
+  podSecurityContext:
+    fsGroup: 2000
+  
+  # Pod annotations
+  podAnnotations:
+    example.com/deployment: "basic"
+    example.com/database: "sqlite" 

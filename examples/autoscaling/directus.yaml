@@ -1,0 +1,231 @@
+apiVersion: directus.example.com/v1
+kind: Directus
+metadata:
+  name: directus-autoscaling
+  namespace: default
+  labels:
+    app.kubernetes.io/name: directus
+    app.kubernetes.io/instance: directus-autoscaling
+    app.kubernetes.io/component: directus
+spec:
+  # Initial replica count (HPA will manage this)
+  replicaCount: 2
+  
+  # Use stable Directus image
+  image:
+    repository: directus/directus
+    tag: "11.3.0"
+    pullPolicy: IfNotPresent
+  
+  # Admin configuration
+  adminEmail: "admin@company.com"
+  
+  # Create service account
+  serviceAccount:
+    create: true
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+  
+  # PostgreSQL database for shared state
+  database:
+    engine: postgresql
+    host: postgresql.default.svc.cluster.local
+    port: 5432
+    database: directus_db
+    username: directus_user
+    existingSecret: postgresql-credentials
+  
+  # Redis for shared sessions and caching
+  redis:
+    enabled: true
+    host: redis.default.svc.cluster.local
+    port: 6379
+    existingSecret: redis-credentials
+  
+  # Enable all health checks for reliable scaling
+  enableLivenessProbe: true
+  enableReadinessProbe: true
+  enableStartupProbe: true
+  
+  # Create application secrets
+  createApplicationSecret: true
+  applicationSecretName: directus-autoscaling-secrets
+  
+  # Attach credentials
+  attachExistingSecrets:
+    - postgresql-credentials
+    - redis-credentials
+  
+  # CRITICAL: Resource requests are required for HPA
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 1000m      # HPA uses this for CPU percentage calculation
+      memory: 1Gi     # HPA uses this for memory percentage calculation
+  
+  # Enable Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: true
+    minReplicas: 2                          # Minimum for high availability
+    maxReplicas: 10                         # Adjust based on your needs
+    targetCPUUtilizationPercentage: 70      # Scale up when CPU > 70%
+    targetMemoryUtilizationPercentage: 80   # Scale up when memory > 80%
+  
+  # Environment variables optimized for scaling
+  extraEnvVars:
+    # Public configuration
+    - name: PUBLIC_URL
+      value: "https://directus.company.com"
+    
+    # Logging (reduced for performance)
+    - name: LOG_LEVEL
+      value: "warn"
+    - name: LOG_STYLE
+      value: "raw"
+    
+    # Redis configuration for shared state
+    - name: CACHE_ENABLED
+      value: "true"
+    - name: CACHE_STORE
+      value: "redis"
+    - name: CACHE_TTL
+      value: "30m"
+    - name: CACHE_NAMESPACE
+      value: "directus-cache"
+    
+    # Session management via Redis
+    - name: SESSION_STORE
+      value: "redis"
+    - name: SESSION_COOKIE_TTL
+      value: "7d"
+    
+    # Rate limiting via Redis
+    - name: RATE_LIMITER_ENABLED
+      value: "true"
+    - name: RATE_LIMITER_STORE
+      value: "redis"
+    - name: RATE_LIMITER_POINTS
+      value: "50"
+    - name: RATE_LIMITER_DURATION
+      value: "1"
+    
+    # Database connection pooling for scalability
+    - name: DB_CONNECTION_TIMEOUT
+      value: "60000"
+    - name: DB_POOL_MIN
+      value: "5"
+    - name: DB_POOL_MAX
+      value: "25"
+    - name: DB_ACQUIRE_CONNECTION_TIMEOUT
+      value: "60000"
+    - name: DB_CREATE_CONNECTION_TIMEOUT
+      value: "30000"
+    - name: DB_DESTROY_TIMEOUT_MILLIS
+      value: "5000"
+    - name: DB_IDLE_TIMEOUT_MILLIS
+      value: "30000"
+    - name: DB_REAP_INTERVAL_MILLIS
+      value: "1000"
+    
+    # Performance optimizations
+    - name: ASSETS_CACHE_TTL
+      value: "30d"
+    - name: ASSETS_TRANSFORM_MAX_CONCURRENT
+      value: "4"
+    
+    # File storage configuration
+    - name: STORAGE_LOCATIONS
+      value: "local"
+    - name: STORAGE_LOCAL_ROOT
+      value: "/directus/uploads"
+    
+    # Email configuration
+    - name: EMAIL_FROM
+      value: "noreply@company.com"
+    - name: EMAIL_TRANSPORT
+      value: "smtp"
+    
+    # Security for production
+    - name: CORS_ENABLED
+      value: "true"
+    - name: CORS_ORIGIN
+      value: "https://directus.company.com"
+    - name: SESSION_COOKIE_SECURE
+      value: "true"
+    - name: SESSION_COOKIE_SAME_SITE
+      value: "lax"
+  
+  # Security context
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+  
+  # Pod security context
+  podSecurityContext:
+    fsGroup: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  
+  # Node selection for performance
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  
+  # Anti-affinity for high availability across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/instance
+              operator: In
+              values:
+              - directus-autoscaling
+          topologyKey: kubernetes.io/hostname
+      # Also prefer different zones if available
+      - weight: 50
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/instance
+              operator: In
+              values:
+              - directus-autoscaling
+          topologyKey: topology.kubernetes.io/zone
+  
+  # Pod annotations for monitoring and autoscaling
+  podAnnotations:
+    # Prometheus monitoring
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8055"
+    prometheus.io/path: "/metrics"
+    
+    # Cluster autoscaler settings
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+    
+    # Scaling metadata
+    autoscaling.kubernetes.io/behavior: "predictive"
+  
+  # Extra volumes for shared storage
+  extraVolumes:
+    - name: uploads-storage
+      persistentVolumeClaim:
+        claimName: directus-uploads-pvc
+  
+  # Mount shared storage
+  extraVolumeMounts:
+    - name: uploads-storage
+      mountPath: /directus/uploads 

@@ -1,0 +1,178 @@
+apiVersion: directus.example.com/v1
+kind: Directus
+metadata:
+  name: directus-ingress
+  namespace: default
+  labels:
+    app.kubernetes.io/name: directus
+    app.kubernetes.io/instance: directus-ingress
+spec:
+  # Standard replica count
+  replicaCount: 2
+  
+  # Use stable Directus image
+  image:
+    repository: directus/directus
+    tag: "11.3.0"
+    pullPolicy: IfNotPresent
+  
+  # Admin configuration
+  adminEmail: "admin@example.com"
+  
+  # Create service account
+  serviceAccount:
+    create: true
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+  
+  # Enable ingress with TLS
+  ingress:
+    enabled: true
+    enableTLS: true
+    className: nginx
+    annotations:
+      # cert-manager annotations for automatic SSL
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      
+      # Security headers
+      nginx.ingress.kubernetes.io/custom-headers: |
+        X-Frame-Options: DENY
+        X-Content-Type-Options: nosniff
+        X-XSS-Protection: 1; mode=block
+        Strict-Transport-Security: max-age=31536000; includeSubDomains
+      
+      # Rate limiting
+      nginx.ingress.kubernetes.io/rate-limit: "100"
+      nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+      
+      # Body size limit for file uploads
+      nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+      
+      # WebSocket support
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+      
+      # Force SSL redirect
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    hosts:
+      - host: directus.example.com  # Replace with your domain
+        paths:
+          - path: /
+            pathType: Prefix
+    
+    tls:
+      - secretName: directus-tls
+        hosts:
+          - directus.example.com  # Replace with your domain
+  
+  # Database configuration (using SQLite for simplicity)
+  database:
+    engine: sqlite
+  
+  # Disable Redis for this example
+  redis:
+    enabled: false
+  
+  # Enable health checks
+  enableLivenessProbe: true
+  enableReadinessProbe: true
+  enableStartupProbe: true
+  
+  # Create application secrets
+  createApplicationSecret: true
+  applicationSecretName: directus-ingress-secrets
+  
+  # Resource allocation
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Environment variables for web access
+  extraEnvVars:
+    # Public URL configuration (MUST match your domain)
+    - name: PUBLIC_URL
+      value: "https://directus.example.com"  # Replace with your domain
+    
+    # Logging
+    - name: LOG_LEVEL
+      value: "info"
+    - name: LOG_STYLE
+      value: "pretty"
+    
+    # CORS configuration
+    - name: CORS_ENABLED
+      value: "true"
+    - name: CORS_ORIGIN
+      value: "https://directus.example.com"  # Replace with your domain
+    - name: CORS_METHODS
+      value: "GET,POST,PATCH,DELETE,OPTIONS"
+    - name: CORS_ALLOWED_HEADERS
+      value: "Content-Type,Authorization"
+    - name: CORS_CREDENTIALS
+      value: "true"
+    
+    # Security settings
+    - name: SESSION_COOKIE_SECURE
+      value: "true"
+    - name: SESSION_COOKIE_SAME_SITE
+      value: "lax"
+    
+    # File upload configuration
+    - name: FILES_MAX_UPLOAD_SIZE
+      value: "100MB"
+    - name: FILES_FOLDER
+      value: "/directus/uploads"
+    
+    # Cache settings (basic file-based caching)
+    - name: CACHE_ENABLED
+      value: "true"
+    - name: CACHE_TTL
+      value: "10m"
+    
+    # Performance
+    - name: ASSETS_CACHE_TTL
+      value: "30d"
+  
+  # Security context
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    allowPrivilegeEscalation: false
+  
+  # Pod security context
+  podSecurityContext:
+    fsGroup: 1000
+    runAsNonRoot: true
+  
+  # Affinity for distribution across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/instance
+              operator: In
+              values:
+              - directus-ingress
+          topologyKey: kubernetes.io/hostname
+  
+  # Pod annotations
+  podAnnotations:
+    ingress.kubernetes.io/rewrite-target: /
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8055" 

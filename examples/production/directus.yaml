@@ -1,0 +1,226 @@
+apiVersion: directus.example.com/v1
+kind: Directus
+metadata:
+  name: production-directus
+  namespace: default
+  labels:
+    app.kubernetes.io/name: directus
+    app.kubernetes.io/instance: production-directus
+    app.kubernetes.io/component: directus
+    app.kubernetes.io/part-of: directus-platform
+    app.kubernetes.io/managed-by: directus-operator
+spec:
+  # Production replica count
+  replicaCount: 2
+  
+  # Stable Directus image for production
+  image:
+    repository: directus/directus
+    tag: "11.3.0"  # Use specific version for production
+    pullPolicy: IfNotPresent
+  
+  # Production admin configuration
+  adminEmail: "admin@company.com"
+  
+  # Create dedicated service account
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: ""  # Add IAM role if using AWS EKS
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+  
+  # PostgreSQL database configuration
+  database:
+    engine: postgresql
+    host: postgresql.default.svc.cluster.local
+    port: 5432
+    database: directus_db
+    username: directus_user
+    existingSecret: postgresql-credentials
+  
+  # Enable Redis for production performance
+  redis:
+    enabled: true
+    host: redis.default.svc.cluster.local
+    port: 6379
+    existingSecret: redis-credentials
+  
+  # Enable all health checks for production
+  enableLivenessProbe: true
+  enableReadinessProbe: true
+  enableStartupProbe: true
+  
+  # Create application secrets
+  createApplicationSecret: true
+  applicationSecretName: production-directus-secrets
+  
+  # Attach database and Redis credentials
+  attachExistingSecrets:
+    - postgresql-credentials
+    - redis-credentials
+  
+  # Production resource allocation
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+  
+  # Enable autoscaling for production
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # Production environment variables
+  extraEnvVars:
+    # Public configuration
+    - name: PUBLIC_URL
+      value: "https://directus.company.com"  # Update for your domain
+    - name: LOG_LEVEL
+      value: "warn"
+    - name: LOG_STYLE
+      value: "pretty"
+    
+    # Cache configuration
+    - name: CACHE_ENABLED
+      value: "true"
+    - name: CACHE_STORE
+      value: "redis"
+    - name: CACHE_TTL
+      value: "30m"
+    - name: CACHE_AUTO_PURGE
+      value: "true"
+    
+    # Session configuration
+    - name: SESSION_STORE
+      value: "redis"
+    - name: SESSION_COOKIE_TTL
+      value: "7d"
+    - name: SESSION_COOKIE_SECURE
+      value: "true"
+    - name: SESSION_COOKIE_SAME_SITE
+      value: "lax"
+    
+    # Rate limiting
+    - name: RATE_LIMITER_ENABLED
+      value: "true"
+    - name: RATE_LIMITER_STORE
+      value: "redis"
+    - name: RATE_LIMITER_POINTS
+      value: "25"
+    - name: RATE_LIMITER_DURATION
+      value: "1"
+    
+    # Database optimizations
+    - name: DB_CONNECTION_TIMEOUT
+      value: "60000"
+    - name: DB_POOL_MIN
+      value: "2"
+    - name: DB_POOL_MAX
+      value: "20"
+    
+    # File storage (configure for your storage solution)
+    - name: STORAGE_LOCATIONS
+      value: "local"
+    - name: STORAGE_LOCAL_ROOT
+      value: "/directus/uploads"
+    
+    # Email configuration (update for your SMTP provider)
+    - name: EMAIL_FROM
+      value: "noreply@company.com"
+    - name: EMAIL_TRANSPORT
+      value: "smtp"
+    - name: EMAIL_SMTP_HOST
+      value: "smtp.company.com"
+    - name: EMAIL_SMTP_PORT
+      value: "587"
+    - name: EMAIL_SMTP_SECURE
+      value: "false"
+    
+    # Security
+    - name: CORS_ENABLED
+      value: "true"
+    - name: CORS_ORIGIN
+      value: "https://directus.company.com"
+    - name: CORS_METHODS
+      value: "GET,POST,PATCH,DELETE"
+    - name: CORS_ALLOWED_HEADERS
+      value: "Content-Type,Authorization"
+    
+    # Performance
+    - name: ASSETS_CACHE_TTL
+      value: "30d"
+    - name: ASSETS_TRANSFORM_MAX_CONCURRENT
+      value: "4"
+  
+  # Enhanced security context
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: false  # Directus needs write access for uploads
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+  
+  # Pod security context
+  podSecurityContext:
+    fsGroup: 1000
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  
+  # Production node selection (optional)
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    # node-type: production  # Uncomment if you have dedicated production nodes
+  
+  # Tolerations for dedicated nodes (optional)
+  # tolerations:
+  #   - key: "production"
+  #     operator: "Equal"
+  #     value: "true"
+  #     effect: "NoSchedule"
+  
+  # Affinity rules for high availability
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/instance
+              operator: In
+              values:
+              - production-directus
+          topologyKey: kubernetes.io/hostname
+  
+  # Pod annotations for monitoring and management
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8055"
+    prometheus.io/path: "/metrics"
+    deployment.kubernetes.io/revision: "1"
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+  
+  # Extra volumes for file storage (configure based on your needs)
+  extraVolumes:
+    - name: uploads-storage
+      persistentVolumeClaim:
+        claimName: directus-uploads-pvc
+  
+  # Mount the uploads volume
+  extraVolumeMounts:
+    - name: uploads-storage
+      mountPath: /directus/uploads 
